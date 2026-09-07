@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# CSC 124 assignment submitter — Toccoa Falls College
+# CSC 124 assignment submitter — University of Toccoa Falls
 # Students run this from their assignment folder in their Coder workspace:
 #
 #   bash <(curl -fsSL https://raw.githubusercontent.com/TGoetzUTF/csc124-tools/main/submit.sh)
@@ -9,7 +9,8 @@
 
 set -u
 
-INSTRUCTOR_GH="TGoetzUTF"
+# The class GitHub organization all submissions are created in.
+ORG="CSC124-OL1A-FA26"
 
 say()  { printf '\n\033[1;36m%s\033[0m\n' "$*"; }
 ok()   { printf '\033[1;32m  ✓ %s\033[0m\n' "$*"; }
@@ -39,13 +40,24 @@ if ! gh auth status >/dev/null 2>&1; then
   gh auth login --web --git-protocol https || fail "GitHub sign-in did not finish. Run the submitter again."
 fi
 gh auth setup-git >/dev/null 2>&1
-ok "Signed in to GitHub as: $(gh api user -q .login)"
+me=$(gh api user -q .login)
+ok "Signed in to GitHub as: $me"
 
 # ── 3. Which assignment is this? ─────────────────────────────────────
-read -rp "  Assignment name (e.g. week2): " raw
-assignment=$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')
+# The workspace template writes its name to ~/.csc124-assignment on startup,
+# so we can detect the assignment automatically. Fall back to asking.
+assignment=""
+if [ -f "$HOME/.csc124-assignment" ]; then
+  assignment=$(tr '[:upper:]' '[:lower:]' < "$HOME/.csc124-assignment" | sed 's/^csc124-//' | tr -cd 'a-z0-9-')
+fi
+if [ -z "$assignment" ] || [ "$assignment" = "csharp" ]; then
+  read -rp "  Assignment name (e.g. week2): " raw
+  assignment=$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')
+fi
 [ -n "$assignment" ] || fail "Assignment name is required (letters and numbers only, e.g. week2)."
-repo="csc124-$assignment"
+ok "Assignment: $assignment"
+# Repo lives in the class org, named so all of one week sorts together: csc124-week2-<you>
+reponame="csc124-${assignment}-${me}"
 
 # ── 3.5 Add the auto-run GitHub Action ───────────────────────────────
 # Every push to GitHub will compile and run the student's code and show a
@@ -122,27 +134,24 @@ git add -A
 if git diff --cached --quiet 2>/dev/null && git rev-parse HEAD >/dev/null 2>&1; then
   ok "No new changes since your last submission — pushing what's here."
 else
-  git commit -m "Submission: $repo ($(date '+%Y-%m-%d %H:%M'))" >/dev/null || fail "Nothing to commit. Are your files in this folder? (run: ls)"
+  git commit -m "Submission: $reponame ($(date '+%Y-%m-%d %H:%M'))" >/dev/null || fail "Nothing to commit. Are your files in this folder? (run: ls)"
   ok "Work saved as a commit."
 fi
 
-# ── 5. Create the repository on GitHub (first time) or update it ─────
-me=$(gh api user -q .login)
+# ── 5. Create the repository in the class org (first time) or update it ─
+# As org owner, your instructor already has access to every repo here —
+# no collaborator invite needed.
 if git remote get-url origin >/dev/null 2>&1; then
   git push -u origin HEAD >/dev/null 2>&1 || fail "Push failed. Ask your instructor for help and include this screen."
-elif gh repo view "$me/$repo" >/dev/null 2>&1; then
-  git remote add origin "https://github.com/$me/$repo.git"
+elif gh repo view "$ORG/$reponame" >/dev/null 2>&1; then
+  git remote add origin "https://github.com/$ORG/$reponame.git"
   git push -u origin HEAD >/dev/null 2>&1 || fail "Push failed. Ask your instructor for help and include this screen."
 else
-  gh repo create "$repo" --private --source=. --push >/dev/null 2>&1 || fail "Could not create the repository on GitHub."
+  gh repo create "$ORG/$reponame" --private --source=. --push >/dev/null 2>&1 \
+    || fail "Could not create the repository in $ORG. Make sure your instructor has added you to the organization, then try again."
 fi
-ok "Your code is on GitHub (private repository: $me/$repo)."
+ok "Your code is on GitHub (private repository: $ORG/$reponame)."
 
-# ── 6. Give your instructor access ───────────────────────────────────
-gh api --method PUT "repos/$me/$repo/collaborators/$INSTRUCTOR_GH" >/dev/null 2>&1 \
-  && ok "Instructor ($INSTRUCTOR_GH) has been given access." \
-  || echo "  (Could not auto-invite the instructor — invite $INSTRUCTOR_GH under the repo's Settings → Collaborators.)"
-
-# ── 7. Your submission link ──────────────────────────────────────────
-say "DONE! Submit this link for your assignment:"
-printf '\n  \033[1;33mhttps://github.com/%s/%s\033[0m\n\n' "$me" "$repo"
+# ── 6. Your submission link ──────────────────────────────────────────
+say "DONE! Submit this link in Canvas:"
+printf '\n  \033[1;33mhttps://github.com/%s/%s\033[0m\n\n' "$ORG" "$reponame"
