@@ -77,5 +77,5 @@ gh api --method PUT "repos/$me/$repo/collaborators/$INSTRUCTOR_GH" >/dev/null 2>
   || echo "  (Could not auto-invite the instructor — invite $INSTRUCTOR_GH under the repo's Settings → Collaborators.)"
 
 # ── 7. Your submission link ──────────────────────────────────────────
-say "DONE! Submit this link in Canvas:"
+say "DONE! Submit this link for your assignment:"
 printf '\n  \033[1;33mhttps://github.com/%s/%s\033[0m\n\n' "$me" "$repo"
