@@ -47,6 +47,73 @@ assignment=$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]' | tr -cd 'a-z0-9-')
 [ -n "$assignment" ] || fail "Assignment name is required (letters and numbers only, e.g. week2)."
 repo="csc124-$assignment"
 
+# ── 3.5 Add the auto-run GitHub Action ───────────────────────────────
+# Every push to GitHub will compile and run the student's code and show a
+# green check (ran) or red X (didn't compile / crashed) on the commit.
+# Written fresh every submit so the latest version always ships.
+mkdir -p .github/workflows
+cat > .github/workflows/run-code.yml <<'RUNYML'
+name: Run My Code
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/dotnet/sdk:10.0
+    timeout-minutes: 10
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v4
+
+      - name: Compile and run the program
+        run: |
+          export DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1
+          echo "## CSC 124 — Automated Run" >> "$GITHUB_STEP_SUMMARY"
+
+          # Find a .csproj project, otherwise a single .cs file (.NET 10 file-based app)
+          proj=$(find . -name '*.csproj' | head -1)
+          if [ -n "$proj" ]; then
+            target="--project $(dirname "$proj")"
+          else
+            csfile=$(find . -maxdepth 2 -name '*.cs' | head -1)
+            [ -n "$csfile" ] || { echo "❌ No C# files found in this repository." | tee -a "$GITHUB_STEP_SUMMARY"; exit 1; }
+            target="$csfile"
+          fi
+          echo "Running: \`dotnet run $target\`" >> "$GITHUB_STEP_SUMMARY"
+
+          # Feed dummy input so programs that read input don't crash; cap at 60s.
+          if timeout 60s bash -c "yes 0 | dotnet run $target" > output.txt 2>&1; then
+            status="✅ Your program compiled and ran successfully."
+            rc=0
+          else
+            rc=$?
+            if [ "$rc" -eq 124 ]; then
+              status="⚠️ Your program ran but did not finish within 60 seconds."
+            else
+              status="❌ Your program did not compile, or it crashed while running."
+            fi
+          fi
+
+          echo "$status"
+          {
+            echo ""
+            echo "$status"
+            echo ""
+            echo "<details><summary>Program output</summary>"
+            echo ""
+            echo '```'
+            head -c 20000 output.txt
+            echo '```'
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          # Red X only for a real compile error / crash; a timeout is a soft warning.
+          [ "$rc" -eq 0 ] || [ "$rc" -eq 124 ]
+RUNYML
+
 # ── 4. Save your work as a commit ────────────────────────────────────
 if [ ! -d .git ]; then
   git init -b main >/dev/null 2>&1 || git init >/dev/null
