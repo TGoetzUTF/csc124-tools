@@ -1,0 +1,4 @@
+# submit.sh runs in Linux workspaces — it MUST keep LF line endings.
+# CRLF would break it with: $'\r': command not found
+* text=auto
+*.sh text eol=lf
