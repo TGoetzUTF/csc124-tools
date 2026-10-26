@@ -10,7 +10,7 @@
 set -u
 
 # The class GitHub organization all submissions are created in.
-ORG="CSC124-OL1A-FA26"
+ORG="CSC124-OL1B-FA26"
 
 say()  { printf '\n\033[1;36m%s\033[0m\n' "$*"; }
 ok()   { printf '\033[1;32m  ✓ %s\033[0m\n' "$*"; }
@@ -126,30 +126,42 @@ jobs:
           [ "$rc" -eq 0 ] || [ "$rc" -eq 124 ]
 RUNYML
 
-# ── 4. Save your work as a commit ────────────────────────────────────
+# ── 4. Connect to the class-org repo and sync with its history ───────
 if [ ! -d .git ]; then
-  git init -b main >/dev/null 2>&1 || git init >/dev/null
+  git init -q -b main 2>/dev/null || { git init -q; git branch -M main 2>/dev/null || true; }
 fi
+if git remote get-url origin >/dev/null 2>&1; then
+  git remote set-url origin "https://github.com/$ORG/$reponame.git"
+else
+  git remote add origin "https://github.com/$ORG/$reponame.git"
+fi
+
+# If the repo already exists on GitHub, base this submission on its latest
+# history so the push fast-forwards even from a brand-new or rebuilt
+# workspace (prevents the "fetch first" / unrelated-history rejection).
+repo_exists=no
+if gh repo view "$ORG/$reponame" >/dev/null 2>&1; then
+  repo_exists=yes
+  if git fetch -q origin main 2>/dev/null; then
+    git reset -q --mixed origin/main
+  fi
+fi
+
+# ── 5. Save your work and push ───────────────────────────────────────
 git add -A
 if git diff --cached --quiet 2>/dev/null && git rev-parse HEAD >/dev/null 2>&1; then
-  ok "No new changes since your last submission — pushing what's here."
+  ok "No new changes since your last submission."
 else
-  git commit -m "Submission: $reponame ($(date '+%Y-%m-%d %H:%M'))" >/dev/null || fail "Nothing to commit. Are your files in this folder? (run: ls)"
+  git commit -q -m "Submission: $reponame ($(date '+%Y-%m-%d %H:%M'))" || fail "Nothing to commit. Are your files in this folder? (run: ls)"
   ok "Work saved as a commit."
 fi
 
-# ── 5. Create the repository in the class org (first time) or update it ─
-# As org owner, your instructor already has access to every repo here —
-# no collaborator invite needed.
-if git remote get-url origin >/dev/null 2>&1; then
-  git push -u origin HEAD >/dev/null 2>&1 || fail "Push failed. Ask your instructor for help and include this screen."
-elif gh repo view "$ORG/$reponame" >/dev/null 2>&1; then
-  git remote add origin "https://github.com/$ORG/$reponame.git"
-  git push -u origin HEAD >/dev/null 2>&1 || fail "Push failed. Ask your instructor for help and include this screen."
-else
-  gh repo create "$ORG/$reponame" --private --source=. --push >/dev/null 2>&1 \
+# Create the repo in the class org the first time, then push.
+if [ "$repo_exists" = no ]; then
+  gh repo create "$ORG/$reponame" --private >/dev/null 2>&1 \
     || fail "Could not create the repository in $ORG. Make sure your instructor has added you to the organization, then try again."
 fi
+git push -q -u origin main 2>/dev/null || fail "Push failed. Ask your instructor for help and include this screen."
 ok "Your code is on GitHub (private repository: $ORG/$reponame)."
 
 # ── 6. Your submission link ──────────────────────────────────────────
